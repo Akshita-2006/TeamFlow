@@ -98,7 +98,9 @@ export async function sendMail({ to, subject, text, html }: MailMessage) {
         "."
       ].join("\r\n");
   secure.write(`${body}\r\n`);
-  await readLine(secure);
+  const dataResponse = await readLine(secure);
+  const dataCode = Number(dataResponse.slice(0, 3));
+  if (dataCode !== 250) throw new Error(`SMTP message rejected: ${dataResponse}`);
   await command(secure, "QUIT", [221]);
   secure.end();
   return { delivered: true, mode: "smtp" };
