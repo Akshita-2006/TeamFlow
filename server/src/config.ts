@@ -19,12 +19,20 @@ function cleanEnv(value: string | undefined) {
   return cleaned || undefined;
 }
 
+function encodeAddress(value: string) {
+  const match = value.match(/<([^>]+)>/);
+  return match?.[1] ?? value;
+}
+
 const smtpHost = cleanEnv(process.env.SMTP_HOST);
 const smtpUser = cleanEnv(process.env.SMTP_USER);
 const smtpPass = smtpHost === "smtp.gmail.com"
   ? cleanEnv(process.env.SMTP_PASS)?.replace(/\s+/g, "")
   : cleanEnv(process.env.SMTP_PASS);
 const mailFrom = cleanEnv(process.env.MAIL_FROM) ?? (smtpUser ? `TeamFlow <${smtpUser}>` : "TeamFlow <noreply@teamflow.local>");
+const brevoApiKey = cleanEnv(process.env.BREVO_API_KEY);
+const brevoFromEmail = cleanEnv(process.env.BREVO_FROM_EMAIL) ?? encodeAddress(mailFrom);
+const brevoFromName = cleanEnv(process.env.BREVO_FROM_NAME) ?? "TeamFlow";
 
 export const config = {
   mongoUri: process.env.MONGO_URI ?? "mongodb://127.0.0.1:27017/teamflow",
@@ -38,6 +46,9 @@ export const config = {
   smtpUser,
   smtpPass,
   mailFrom,
+  brevoApiKey,
+  brevoFromEmail,
+  brevoFromName,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET

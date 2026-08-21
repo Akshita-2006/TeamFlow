@@ -50,7 +50,37 @@ const lookupIpv4: net.LookupFunction = (hostname, options, callback) => {
   dns.lookup(hostname, { ...options, family: 4 }, callback);
 };
 
+async function sendWithBrevo({ to, subject, text, html }: MailMessage) {
+  if (!config.brevoApiKey) return undefined;
+
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": config.brevoApiKey,
+      "Content-Type": "application/json",
+      "User-Agent": "teamflow-api",
+    },
+    body: JSON.stringify({
+      sender: { email: config.brevoFromEmail, name: config.brevoFromName },
+      to: [{ email: to }],
+      subject,
+      text,
+      htmlContent: html ?? text.replace(/\n/g, "<br>"),
+      textContent: text,
+    }),
+  });
+  const payload = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    throw new Error(`Brevo email failed (${response.status}): ${JSON.stringify(payload)}`);
+  }
+  console.info(`[mail] delivered via Brevo to ${to}: ${payload?.messageId ?? "accepted"}`);
+  return { delivered: true, mode: "brevo", id: payload?.messageId };
+}
+
 export async function sendMail({ to, subject, text, html }: MailMessage) {
+  const brevoResult = await sendWithBrevo({ to, subject, text, html });
+  if (brevoResult) return brevoResult;
+
   if (!config.smtpHost || !config.smtpUser || !config.smtpPass) {
     console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n${text}`);
     return { delivered: false, mode: "console" };

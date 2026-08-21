@@ -194,11 +194,16 @@ PORT=5000
 VITE_API_URL=http://localhost:5000/api
 VITE_SOCKET_URL=http://localhost:5000
 
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-gmail-app-password
-MAIL_FROM=TeamFlow <your-email@gmail.com>
+BREVO_API_KEY=your-brevo-api-key
+BREVO_FROM_EMAIL=your-verified-sender@example.com
+BREVO_FROM_NAME=TeamFlow
+
+# Optional SMTP fallback for hosts that allow outbound SMTP.
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USER=your-email@gmail.com
+# SMTP_PASS=your-gmail-app-password
+# MAIL_FROM=TeamFlow <your-email@gmail.com>
 
 STORAGE_PROVIDER=supabase
 SUPABASE_URL=https://your-project-ref.supabase.co
@@ -290,12 +295,12 @@ STORAGE_PROVIDER=supabase
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_STORAGE_BUCKET=teamflow-uploads
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-gmail-app-password
-MAIL_FROM=TeamFlow <your-email@gmail.com>
+BREVO_API_KEY=your-brevo-api-key
+BREVO_FROM_EMAIL=your-verified-sender@example.com
+BREVO_FROM_NAME=TeamFlow
 ```
+
+For production email, verify a sender in Brevo under **Senders & IP > Senders**, then set `BREVO_FROM_EMAIL` to that exact verified email address. SMTP is only a fallback; free Render services cannot reliably reach Gmail SMTP ports.
 
 ## Future Improvements
 

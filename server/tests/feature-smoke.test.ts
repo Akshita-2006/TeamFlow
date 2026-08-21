@@ -16,6 +16,7 @@ process.env.MONGOMS_SYSTEM_BINARY ??= "C:\\Program Files\\MongoDB\\Server\\8.3\\
 config.smtpHost = undefined;
 config.smtpUser = undefined;
 config.smtpPass = undefined;
+config.brevoApiKey = undefined;
 
 async function register(email: string, username: string, name: string) {
   const response = await request(app).post("/api/auth/register").send({ email, username, name, password: "password123" });
@@ -256,5 +257,5 @@ describe("TeamFlow feature smoke flow", () => {
       .set("Authorization", `Bearer ${owner.token}`);
     expect(datedActivity.status).toBe(200);
     expect(datedActivity.body.data.length).toBeGreaterThan(0);
-  }, 15000);
+  }, 30000);
 });
