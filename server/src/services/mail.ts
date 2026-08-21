@@ -1,5 +1,6 @@
 import net from "node:net";
 import tls from "node:tls";
+import dns from "node:dns";
 import { config } from "../config.js";
 
 function readLine(socket: net.Socket | tls.TLSSocket) {
@@ -17,11 +18,11 @@ function readLine(socket: net.Socket | tls.TLSSocket) {
   });
 }
 
-async function command(socket: net.Socket | tls.TLSSocket, line: string, expected: number[]) {
+async function command(socket: net.Socket | tls.TLSSocket, line: string, expected: number[], label = line) {
   socket.write(`${line}\r\n`);
   const response = await readLine(socket);
   const code = Number(response.slice(0, 3));
-  if (!expected.includes(code)) throw new Error(`SMTP command failed: ${line} -> ${response}`);
+  if (!expected.includes(code)) throw new Error(`SMTP command failed at ${label}: ${response}`);
   return response;
 }
 
@@ -45,6 +46,10 @@ function encodeBody(value: string) {
   return value.replace(/^\./gm, "..");
 }
 
+const lookupIpv4: net.LookupFunction = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...options, family: 4 }, callback);
+};
+
 export async function sendMail({ to, subject, text, html }: MailMessage) {
   if (!config.smtpHost || !config.smtpUser || !config.smtpPass) {
     console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n${text}`);
@@ -53,15 +58,16 @@ export async function sendMail({ to, subject, text, html }: MailMessage) {
 
   const from = config.mailFrom;
   const fromEmail = encodeAddress(from);
-  const socket = net.connect(config.smtpPort, config.smtpHost);
+  console.info(`[mail] sending via ${config.smtpHost}:${config.smtpPort} from ${fromEmail} to ${to}`);
+  const socket = net.connect({ port: config.smtpPort, host: config.smtpHost, lookup: lookupIpv4 });
   await readLine(socket);
   await command(socket, `EHLO ${config.smtpHost}`, [250]);
   await command(socket, "STARTTLS", [220]);
   const secure = tls.connect({ socket, servername: config.smtpHost });
   await command(secure, `EHLO ${config.smtpHost}`, [250]);
   await command(secure, "AUTH LOGIN", [334]);
-  await command(secure, Buffer.from(config.smtpUser).toString("base64"), [334]);
-  await command(secure, Buffer.from(config.smtpPass).toString("base64"), [235]);
+  await command(secure, Buffer.from(config.smtpUser).toString("base64"), [334], "AUTH username");
+  await command(secure, Buffer.from(config.smtpPass).toString("base64"), [235], "AUTH password");
   await command(secure, `MAIL FROM:<${fromEmail}>`, [250]);
   await command(secure, `RCPT TO:<${to}>`, [250, 251]);
   await command(secure, "DATA", [354]);
@@ -103,5 +109,6 @@ export async function sendMail({ to, subject, text, html }: MailMessage) {
   if (dataCode !== 250) throw new Error(`SMTP message rejected: ${dataResponse}`);
   await command(secure, "QUIT", [221]);
   secure.end();
+  console.info(`[mail] delivered to SMTP server for ${to}: ${dataResponse.trim()}`);
   return { delivered: true, mode: "smtp" };
 }
