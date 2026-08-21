@@ -12,14 +12,15 @@ export interface ISubmission {
   status: SubmissionStatus;
   note?: string;
   reviewNote?: string;
-  files: { name: string; url: string; type?: string; size?: number }[];
+  files: { name: string; url?: string; key?: string; type?: string; size?: number }[];
   reviewedAt?: Date;
 }
 
 const submittedFileSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    url: { type: String, required: true },
+    url: String,
+    key: String,
     type: String,
     size: Number
   },

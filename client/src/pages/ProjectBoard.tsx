@@ -1,7 +1,7 @@
 import React, { FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, Cloud, Code2, Crown, FileCheck2, GitBranch, Link2, MessageSquare, Plus, Radio, Settings, ShieldCheck, Trash2, UserPlus, Users } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Cloud, Code2, Crown, FileCheck2, GitBranch, Link2, MessageSquare, Plus, Radio, Settings, ShieldCheck, Trash2, UploadCloud, UserPlus, Users } from "lucide-react";
 import { api, socket } from "../lib/api";
 import { useAuth } from "../store/auth";
 
@@ -19,6 +19,9 @@ export function ProjectBoard() {
   const [filterOwner, setFilterOwner] = useState("");
   const [selectedTask, setSelectedTask] = useState(null as any);
   const [uploading, setUploading] = useState(false);
+  const [selectedFileNames, setSelectedFileNames] = useState([] as string[]);
+  const [reviewTarget, setReviewTarget] = useState(null as any);
+  const [reviewDecision, setReviewDecision] = useState("");
   const detailsRef = React.useRef(null as HTMLElement | null);
   const auth = useAuth();
   const qc = useQueryClient();
@@ -36,6 +39,7 @@ export function ProjectBoard() {
     return matchesSearch && matchesOwner;
   });
   const projectMembers = project.data?.members ?? [];
+  const otherProjectMembers = projectMembers.filter((member: any) => idOf(member) !== idOf(auth.user?.id));
   const projectMemberIds = new Set(projectMembers.map((member: any) => idOf(member)));
   const workspaceMembers = workspace.data?.members ?? [];
   const availableMembers = workspaceMembers.filter((member: any) => !projectMemberIds.has(idOf(member.user)));
@@ -46,6 +50,7 @@ export function ProjectBoard() {
   const canEditTaskDetails = ["OWNER", "ADMIN"].includes(currentWorkspaceRole) || isProjectOwner;
   const canManageProject = canEditTaskDetails || isProjectOwner;
   const canCreateTask = ["OWNER", "ADMIN", "MEMBER"].includes(currentWorkspaceRole) || isProjectOwner;
+  const canSelfApproveSubmission = canManageProject;
   const blockedTaskCount = analysis.data?.blockedCount ?? 0;
   const completedTaskCount = (tasks.data ?? []).filter((task: any) => task.status === "DONE").length;
   const pendingReviewCount = (submissions.data ?? []).filter((item: any) => item.status === "PENDING_REVIEW").length;
@@ -91,8 +96,8 @@ export function ProjectBoard() {
 
   const createSubmission = useMutation({
     mutationFn: async ({ taskId, payload }: { taskId: string; payload: any }) => (await api.post(`/tasks/${taskId}/submissions`, payload)).data.data,
-    onSuccess: () => { setMessage("Work submitted for owner/admin review."); refreshProject(); },
-    onError: (err: any) => setMessage(err.response?.data?.error ?? "Could not submit work for review")
+    onSuccess: (data: any) => { setMessage(data.status === "APPROVED" ? "Work added to final delivery." : "Work submitted for review."); refreshProject(); },
+    onError: (err: any) => setMessage(err.response?.data?.error ?? "Could not submit work")
   });
 
   const reviewSubmission = useMutation({
@@ -232,6 +237,10 @@ function dependencySubmit(event: FormEvent<HTMLFormElement>, taskId: string) {
     const formData = new FormData(form);
     const pickedFiles = formData.getAll("cloudFiles").filter((item): item is File => item instanceof File && item.size > 0);
     const manualFiles = String(formData.get("files") || "").split(",").map((url) => url.trim()).filter(Boolean).map((url) => ({ name: url.split("/").pop() || "Submitted link", url }));
+    if (pickedFiles.length === 0 && manualFiles.length === 0) {
+      setMessage("Please upload a file or paste a link before submitting for review.");
+      return;
+    }
     setUploading(true);
     Promise.all(pickedFiles.map(uploadFileToCloud))
       .then((cloudFiles) => {
@@ -239,6 +248,7 @@ function dependencySubmit(event: FormEvent<HTMLFormElement>, taskId: string) {
         if (files.length === 0) throw new Error("Add at least one file or link before submitting.");
         createSubmission.mutate({ taskId: selectedTask._id, payload: { note: formData.get("note") || undefined, files } });
         form.reset();
+        setSelectedFileNames([]);
       })
       .catch((err: any) => setMessage(err.response?.data?.error ?? err.message ?? "Could not upload file."))
       .finally(() => setUploading(false));
@@ -259,10 +269,34 @@ function dependencySubmit(event: FormEvent<HTMLFormElement>, taskId: string) {
     return { ...data.data.file, size: file.size };
   }
 
-  function decideSubmission(submission: any, decision: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED") {
-    const reviewNote = window.prompt(decision === "APPROVED" ? "Approval note (optional)" : "What should be changed?");
-    if (reviewNote === null) return;
-    reviewSubmission.mutate({ taskId: idOf(submission.task), submissionId: submission._id, payload: { decision, reviewNote } });
+  function startReview(submission: any, decision: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED") {
+    setReviewTarget(submission);
+    setReviewDecision(decision);
+  }
+
+  function submitReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reviewNote = String(new FormData(event.currentTarget).get("reviewNote") ?? "");
+    reviewSubmission.mutate({ taskId: idOf(reviewTarget.task), submissionId: reviewTarget._id, payload: { decision: reviewDecision, reviewNote } });
+    setReviewTarget(null);
+    setReviewDecision("");
+  }
+
+  async function openSubmittedFile(file: any) {
+    try {
+      if (file.key) {
+        const { data } = await api.post("/uploads/signed-download", { projectId, key: file.key });
+        window.open(data.data.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      if (file.url) {
+        window.open(file.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      setMessage("This file does not have an access link. Please upload it again.");
+    } catch (err: any) {
+      setMessage(err.response?.data?.error ?? "Could not open file. Please check storage access.");
+    }
   }
 
   function transferProjectSubmit(event: FormEvent<HTMLFormElement>) {
@@ -280,8 +314,26 @@ function dependencySubmit(event: FormEvent<HTMLFormElement>, taskId: string) {
     <section className="space-y-5">
       <div className="rounded-xl bg-[#2f3f3f] p-6 text-white">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><span className="chip bg-[#edf0df] text-[#596344]"><Radio size={14} /> Live project room</span><h2 className="mt-3 text-3xl font-black tracking-normal">{project.data?.name ?? "Kanban Board"}</h2><p className="mt-2 text-[#edf0df]">Create tasks, assign owners, comment, connect dependencies, and watch the project update.</p></div>
+          <div><span className="chip bg-[#edf0df] text-[#596344]"><Radio size={14} /> Project hub</span><h2 className="mt-3 text-3xl font-black tracking-normal">{project.data?.name ?? "Project"}</h2><p className="mt-2 max-w-3xl text-[#edf0df]">One shared place for this project: tasks, assigned owners, submitted work, review decisions, final delivery files and blockers.</p></div>
           <div className="flex gap-2"><Link className="btn-ghost" to={`/app/projects/${projectId}/workload`}><Users size={18} />Workload</Link></div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="panel p-4">
+          <p className="text-xs font-bold uppercase text-[#6f7b73]">Step 1</p>
+          <h3 className="mt-2 font-black">Plan work</h3>
+          <p className="mt-1 text-sm leading-6 text-[#6f7b73]">Break the project into tasks and assign each task to one clear owner.</p>
+        </div>
+        <div className="panel p-4">
+          <p className="text-xs font-bold uppercase text-[#6f7b73]">Step 2</p>
+          <h3 className="mt-2 font-black">Submit output</h3>
+          <p className="mt-1 text-sm leading-6 text-[#6f7b73]">Members attach finished files or links to the exact task they worked on.</p>
+        </div>
+        <div className="panel p-4">
+          <p className="text-xs font-bold uppercase text-[#6f7b73]">Step 3</p>
+          <h3 className="mt-2 font-black">Keep final delivery clean</h3>
+          <p className="mt-1 text-sm leading-6 text-[#6f7b73]">Approved outputs move into Delivery, so final files are separate from drafts.</p>
         </div>
       </div>
 
@@ -336,7 +388,7 @@ function dependencySubmit(event: FormEvent<HTMLFormElement>, taskId: string) {
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2"><FileCheck2 className="text-[#6faebe]" /><h3 className="font-bold">Review inbox</h3></div>
-              <p className="mt-1 text-sm text-[#6f7b73]">This is the GitHub pull-request style queue. Members submit work; owner/admin approves or asks for changes.</p>
+              <p className="mt-1 text-sm text-[#6f7b73]">Work from members lands here before it becomes final. If an owner/admin submits their own assigned task, it goes straight to Delivery.</p>
             </div>
             <span className="chip bg-[#d7edf2] text-[#365f66]">{pendingReviewCount} pending</span>
           </div>
@@ -349,28 +401,28 @@ function dependencySubmit(event: FormEvent<HTMLFormElement>, taskId: string) {
                     <p className="mt-1 text-sm text-[#6f7b73]">Submitted by {item.submitter?.name ?? "Member"} · {item.files?.length ?? 0} file/link(s)</p>
                   </div>
                   {canManageProject && <div className="grid gap-2 sm:grid-cols-3">
-                    <button className="btn-primary" type="button" onClick={() => decideSubmission(item, "APPROVED")}>Approve</button>
-                    <button className="btn-ghost" type="button" onClick={() => decideSubmission(item, "CHANGES_REQUESTED")}>Changes</button>
-                    <button className="rounded-md border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-50" type="button" onClick={() => decideSubmission(item, "REJECTED")}>Reject</button>
+                    <button className="btn-primary" type="button" onClick={() => startReview(item, "APPROVED")}>Approve</button>
+                    <button className="btn-ghost" type="button" onClick={() => startReview(item, "CHANGES_REQUESTED")}>Changes</button>
+                    <button className="rounded-md border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-50" type="button" onClick={() => startReview(item, "REJECTED")}>Reject</button>
                   </div>}
                 </div>
               </div>
             ))}
-            {(submissions.data ?? []).filter((item: any) => item.status === "PENDING_REVIEW").length === 0 && <p className="rounded-lg border border-dashed border-[#ded8c9] bg-[#fbf7ee] p-4 text-sm text-[#6f7b73]">No work is waiting for review.</p>}
+            {(submissions.data ?? []).filter((item: any) => item.status === "PENDING_REVIEW").length === 0 && <p className="rounded-lg border border-dashed border-[#ded8c9] bg-[#fbf7ee] p-4 text-sm text-[#6f7b73]">No submissions are waiting for review.</p>}
           </div>
         </div>
 
         <div className="panel p-5">
           <div className="mb-4 flex items-center gap-2"><Cloud className="text-[#b9906a]" /><h3 className="font-bold">Delivery room</h3></div>
-          <p className="text-sm text-[#6f7b73]">Approved versions become the project delivery set. This is what a client/viewer can inspect without editing anything.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <p className="text-sm text-[#6f7b73]">This is the clean final shelf for the project. Only approved work appears here.</p>
+          <div className="mt-4 grid gap-3">
             <Metric icon={<FileCheck2 size={18} />} label="Pending reviews" value={pendingReviewCount} tone="warm" />
             <Metric icon={<ShieldCheck size={18} />} label="Approved" value={approvedSubmissionCount} tone="cool" />
             <Metric icon={<Cloud size={18} />} label="Delivered files" value={(submissions.data ?? []).filter((item: any) => item.status === "APPROVED").reduce((sum: number, item: any) => sum + (item.files?.length ?? 0), 0)} tone="neutral" />
           </div>
           <div className="mt-4 space-y-2">
             {(submissions.data ?? []).filter((item: any) => item.status === "APPROVED").slice(0, 4).map((item: any) => <p className="rounded-md bg-[#fbf7ee] p-3 text-sm" key={item._id}><b>{item.task?.title ?? "Approved work"}</b><br /><span className="text-[#6f7b73]">Version {item.version} approved by {item.reviewer?.name ?? "reviewer"}</span></p>)}
-            {approvedSubmissionCount === 0 && <p className="rounded-lg bg-[#fbf7ee] p-3 text-sm text-[#6f7b73]">No approved deliverables yet.</p>}
+            {approvedSubmissionCount === 0 && <p className="rounded-lg bg-[#fbf7ee] p-3 text-sm text-[#6f7b73]">Approved files will appear here after review.</p>}
           </div>
         </div>
       </div>
@@ -378,7 +430,7 @@ function dependencySubmit(event: FormEvent<HTMLFormElement>, taskId: string) {
       <div className="panel p-5">
         <div className="flex items-center gap-2"><GitBranch className="text-[#b9906a]" /><h3 className="font-bold">Dependencies & blockers</h3></div>
         <p className="mt-1 text-sm text-[#6f7b73]">Only this project's tasks are counted here.</p>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3">
           <Metric icon={<AlertTriangle size={18} />} label="Blocked tasks" value={blockedTaskCount} tone="warm" />
           <Metric icon={<CheckCircle2 size={18} />} label="Completed tasks" value={completedTaskCount} tone="cool" />
           <Metric icon={<GitBranch size={18} />} label="Bottleneck" value={topBottleneck?.title ?? "None"} tone="neutral" />
@@ -488,34 +540,53 @@ function dependencySubmit(event: FormEvent<HTMLFormElement>, taskId: string) {
                     <div className="rounded-md bg-[#fffdf8] p-3" key={item._id}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div><p className="font-bold">Version {item.version} · {submissionLabel(item.status)}</p><p className="text-xs text-[#6f7b73]">{item.note || "No submission note."}</p></div>
-                        {canManageProject && item.status === "PENDING_REVIEW" && <div className="grid gap-2 sm:grid-cols-3"><button className="btn-primary" type="button" onClick={() => decideSubmission(item, "APPROVED")}>Approve</button><button className="btn-ghost" type="button" onClick={() => decideSubmission(item, "CHANGES_REQUESTED")}>Changes</button><button className="rounded-md border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700" type="button" onClick={() => decideSubmission(item, "REJECTED")}>Reject</button></div>}
+                        {canManageProject && item.status === "PENDING_REVIEW" && <div className="grid gap-2 sm:grid-cols-3"><button className="btn-primary" type="button" onClick={() => startReview(item, "APPROVED")}>Approve</button><button className="btn-ghost" type="button" onClick={() => startReview(item, "CHANGES_REQUESTED")}>Changes</button><button className="rounded-md border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700" type="button" onClick={() => startReview(item, "REJECTED")}>Reject</button></div>}
                       </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {(item.files ?? []).map((file: any, index: number) => <a className="rounded-md border border-[#ded8c9] bg-[#fbf7ee] p-3 text-sm font-bold text-[#507f8a] hover:bg-[#eef8fa]" href={file.url} target="_blank" rel="noreferrer" key={`${file.url}-${index}`}>{file.name}</a>)}
+                        {(item.files ?? []).map((file: any, index: number) => <button className="rounded-md border border-[#ded8c9] bg-[#fbf7ee] p-3 text-left text-sm font-bold text-[#507f8a] hover:bg-[#eef8fa]" type="button" onClick={() => openSubmittedFile(file)} key={`${file.key ?? file.url}-${index}`}>{file.name}</button>)}
                       </div>
                       {item.reviewNote && <p className="mt-3 rounded-md bg-[#edf0df] p-2 text-xs text-[#596344]">Review note: {item.reviewNote}</p>}
                     </div>
                   ))}
-                  {(taskSubmissions.data ?? []).length === 0 && <p className="text-sm text-[#6f7b73]">No submissions yet.</p>}
+                  {(taskSubmissions.data ?? []).length === 0 && <p className="text-sm text-[#6f7b73]">Submitted versions will appear here.</p>}
                 </div>
               </div>
             </div>
-            <form className="rounded-lg border border-[#ded8c9] bg-[#fbf7ee] p-4" onSubmit={commentSubmit}><label className="mb-2 block text-sm font-bold">Add comment</label><textarea className="input min-h-28" name="body" placeholder="Write an update or question..." required /><label className="mb-2 mt-3 block text-sm font-bold">Mention</label><select className="input" name="mention" defaultValue=""><option value="">No mention</option>{projectMembers.map((member: any) => <option key={member._id ?? member} value={member._id ?? member}>@{member.name ?? member.email ?? member}</option>)}</select><button className="btn-primary mt-3">Post comment</button></form>
+            <form className="rounded-lg border border-[#ded8c9] bg-[#fbf7ee] p-4" onSubmit={commentSubmit}><label className="mb-2 block text-sm font-bold">Add comment</label><textarea className="input min-h-28" name="body" placeholder="Write an update or question..." required /><label className="mb-2 mt-3 block text-sm font-bold">Notify teammate</label><select className="input" name="mention" defaultValue=""><option value="">No teammate</option>{otherProjectMembers.map((member: any) => <option key={member._id ?? member} value={member._id ?? member}>@{member.name ?? member.email ?? member}</option>)}</select>{otherProjectMembers.length === 0 && <p className="mt-2 text-xs text-[#6f7b73]">No other project member is available to notify.</p>}<button className="btn-primary mt-3">Post comment</button></form>
           </div>
           {idOf(selectedTask.assignee) === idOf(auth.user?.id) && selectedTask.status !== "DONE" && (
             <form className="mt-4 rounded-lg border border-[#ded8c9] bg-[#fbf7ee] p-4" onSubmit={submitWork}>
-              <h4 className="mb-3 font-bold">Submit work for review</h4>
+              <h4 className="mb-3 font-bold">{canSelfApproveSubmission ? "Add completed work" : "Submit work for review"}</h4>
               <label className="mb-2 block text-sm font-bold">Submission note</label>
               <textarea className="input min-h-20" name="note" placeholder="What did you finish? Mention links, test notes, or files." />
-              <label className="mb-2 mt-3 block text-sm font-bold">Upload files to cloud</label>
-              <input className="input" name="cloudFiles" type="file" multiple />
-              <p className="mt-2 text-xs leading-5 text-[#6f7b73]">Uses Supabase Storage when env keys are configured. Until then, paste links below for local demo.</p>
+              <label className="mb-2 mt-3 block text-sm font-bold">Upload files</label>
+              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#b9cfca] bg-[#fffdf8] p-5 text-center transition hover:border-[#6faebe] hover:bg-[#eef8fa]">
+                <UploadCloud className="mb-2 text-[#507f8a]" size={28} />
+                <span className="font-bold text-[#263333]">Choose files to attach</span>
+                <span className="mt-1 text-xs text-[#6f7b73]">Code, PDFs, docs, screenshots or zip files</span>
+                <input className="sr-only" name="cloudFiles" type="file" multiple onChange={(event: any) => setSelectedFileNames(Array.from(event.target.files ?? []).map((file: any) => file.name))} />
+              </label>
+              {selectedFileNames.length > 0 && <div className="mt-2 rounded-md bg-[#fffdf8] p-2 text-xs text-[#6f7b73]">{selectedFileNames.map((name: string) => <p className="truncate" key={name}>{name}</p>)}</div>}
               <label className="mb-2 mt-3 block text-sm font-bold">File or code links</label>
-              <input className="input" name="files" placeholder="Paste file/code links, comma separated" />
-              <button className="btn-primary mt-3" disabled={uploading}><Cloud size={16} />{uploading ? "Uploading..." : "Submit for review"}</button>
+              <input className="input" name="files" placeholder="Optional: paste links, comma separated" />
+              <button className="btn-primary mt-3" disabled={uploading}><Cloud size={16} />{uploading ? "Uploading..." : canSelfApproveSubmission ? "Add to delivery" : "Submit for review"}</button>
             </form>
           )}
         </section>
+      )}
+      {reviewTarget && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-[#263333]/40 p-4">
+          <form className="w-full max-w-lg rounded-xl border border-[#ded8c9] bg-[#fffdf8] p-5 shadow-xl" onSubmit={submitReview}>
+            <h3 className="text-xl font-black text-[#263333]">{reviewDecision === "APPROVED" ? "Approve submission" : reviewDecision === "CHANGES_REQUESTED" ? "Request changes" : "Reject submission"}</h3>
+            <p className="mt-2 text-sm text-[#6f7b73]">{reviewTarget.task?.title ?? selectedTask?.title ?? "Submitted work"} · version {reviewTarget.version}</p>
+            <label className="mb-2 mt-4 block text-sm font-bold">Review note</label>
+            <textarea className="input min-h-28" name="reviewNote" placeholder={reviewDecision === "APPROVED" ? "Optional approval note" : "Tell the member what needs to change"} required={reviewDecision !== "APPROVED"} />
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <button className="btn-primary" type="submit">Save decision</button>
+              <button className="btn-ghost" type="button" onClick={() => { setReviewTarget(null); setReviewDecision(""); }}>Cancel</button>
+            </div>
+          </form>
+        </div>
       )}
     </section>
   );
@@ -536,7 +607,7 @@ function DependencyGraph({ chain, edges }: { chain: string[]; edges: { from: str
   return (
     <div className="mt-4 rounded-lg border border-[#ded8c9] bg-[#fbf7ee] p-3">
       <p className="text-sm font-bold text-[#263333]">Dependency graph</p>
-      <p className="mt-1 text-xs leading-5 text-[#6f7b73]">This is the relationship view. The blocks above are only quick numbers.</p>
+      <p className="mt-1 text-xs leading-5 text-[#6f7b73]">Shows which tasks are waiting on other tasks before they can move forward.</p>
       {chain.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {chain.map((name, index) => (

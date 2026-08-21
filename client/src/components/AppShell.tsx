@@ -1,12 +1,13 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bell, CalendarClock, ClipboardList, FolderKanban, LayoutDashboard, Menu, Settings, UserCircle, Users, Workflow, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
-import { api } from "../lib/api";
+import { api, socket } from "../lib/api";
 
 export function AppShell() {
   const auth = useAuth();
+  const qc = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -14,6 +15,20 @@ export function AppShell() {
   const showSidebar = location.pathname === "/app";
   const unread = useQuery({ queryKey: ["notifications", "unread-count"], queryFn: async () => (await api.get("/notifications/unread-count")).data.data.count, refetchInterval: 5000 });
   const navClass = ({ isActive }: { isActive: boolean }) => `flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-bold transition ${isActive ? "bg-[#9fcbd6] text-[#263333]" : "text-[#edf0df] hover:bg-[#263333] hover:text-white"}`;
+
+  useEffect(() => {
+    if (!auth.user?.id) return;
+    socket.connect();
+    socket.emit("user:join", auth.user.id);
+    socket.on("notification:new", () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+      qc.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
+    });
+    return () => {
+      socket.emit("user:leave", auth.user?.id);
+      socket.off("notification:new");
+    };
+  }, [auth.user?.id, qc]);
 
   const sidebar = (
     <aside className="flex h-full w-[min(18rem,85vw)] flex-col bg-[#2f3f3f] p-5 text-white">

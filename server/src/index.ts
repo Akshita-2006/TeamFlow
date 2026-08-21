@@ -10,6 +10,8 @@ const io = new Server(server, { cors: { origin: config.clientUrl, credentials: t
 app.set("io", io);
 
 io.on("connection", (socket) => {
+  socket.on("user:join", (userId: string) => socket.join(`user:${userId}`));
+  socket.on("user:leave", (userId: string) => socket.leave(`user:${userId}`));
   socket.on("project:join", (projectId: string) => socket.join(`project:${projectId}`));
   socket.on("project:leave", (projectId: string) => socket.leave(`project:${projectId}`));
 });

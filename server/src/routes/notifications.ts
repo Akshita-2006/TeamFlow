@@ -12,7 +12,7 @@ notificationRouter.get("/unread-count", asyncHandler(async (req: AuthRequest, re
   res.json({ success: true, data: { count } });
 }));
 notificationRouter.get("/", asyncHandler(async (req: AuthRequest, res) => {
-  res.json({ success: true, data: await Notification.find({ user: req.user!.id }).sort({ createdAt: -1 }).limit(50) });
+  res.json({ success: true, data: await Notification.find({ user: req.user!.id }).sort({ createdAt: -1 }).limit(50).populate("project", "name").populate("task", "title") });
 }));
 
 notificationRouter.patch("/:id/read", asyncHandler(async (req: AuthRequest, res) => {

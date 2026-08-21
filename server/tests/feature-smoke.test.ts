@@ -35,10 +35,16 @@ async function notificationTypes(token: string) {
   return response.body.data.map((item: any) => item.type);
 }
 
+async function notifications(token: string) {
+  const response = await request(app).get("/api/notifications").set("Authorization", `Bearer ${token}`);
+  expect(response.status).toBe(200);
+  return response.body.data as any[];
+}
+
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
   await mongoose.connect(mongo.getUri());
-});
+}, 30000);
 
 afterAll(async () => {
   await mongoose.disconnect();
@@ -142,6 +148,16 @@ describe("TeamFlow feature smoke flow", () => {
       .send({ body: "Done with the first pass.", mentions: [owner.user.id] });
     expect(commentResponse.status).toBe(201);
     expect(await notificationTypes(owner.token)).toContain("COMMENT_MENTION");
+    expect((await notifications(owner.token)).some((item) => item.message === "Member mentioned you on Design landing page")).toBe(true);
+
+    const selfMentionBefore = (await notificationTypes(member.token)).filter((type) => type === "COMMENT_MENTION").length;
+    const selfMention = await request(app)
+      .post(`/api/tasks/${task._id}/comments`)
+      .set("Authorization", `Bearer ${member.token}`)
+      .send({ body: "Note for myself should not notify me.", mentions: [member.user.id] });
+    expect(selfMention.status).toBe(201);
+    const selfMentionAfter = (await notificationTypes(member.token)).filter((type) => type === "COMMENT_MENTION").length;
+    expect(selfMentionAfter).toBe(selfMentionBefore);
 
     const directDone = await request(app)
       .patch(`/api/tasks/${task._id}`)
@@ -165,11 +181,26 @@ describe("TeamFlow feature smoke flow", () => {
     expect(approveResponse.body.data.status).toBe("APPROVED");
     expect(await notificationTypes(member.token)).toContain("SUBMISSION_APPROVED");
 
+    const ownerTaskResponse = await request(app)
+      .post("/api/tasks")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ project: project._id, title: "Owner final brief", assignee: owner.user.id, labels: ["delivery"], estimatedEffort: 1 });
+    expect(ownerTaskResponse.status).toBe(201);
+    const ownerTask = ownerTaskResponse.body.data;
+
+    const ownerSubmission = await request(app)
+      .post(`/api/tasks/${ownerTask._id}/submissions`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ note: "Final brief added by owner.", files: [{ name: "brief.pdf", url: "https://example.com/brief.pdf", type: "document" }] });
+    expect(ownerSubmission.status).toBe(201);
+    expect(ownerSubmission.body.data.status).toBe("APPROVED");
+
     const delivered = await request(app)
       .get(`/api/projects/${project._id}/submissions`)
       .set("Authorization", `Bearer ${owner.token}`);
     expect(delivered.status).toBe(200);
     expect(delivered.body.data.some((item: any) => item.status === "APPROVED")).toBe(true);
+    expect(delivered.body.data.some((item: any) => item.task?.title === "Owner final brief" && item.status === "APPROVED")).toBe(true);
 
     const unread = await request(app).get("/api/notifications/unread-count").set("Authorization", `Bearer ${owner.token}`);
     expect(unread.status).toBe(200);

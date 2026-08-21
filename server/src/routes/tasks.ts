@@ -9,6 +9,7 @@ import { Comment } from "../models/Comment.js";
 import { ActivityLog } from "../models/ActivityLog.js";
 import { Notification } from "../models/Notification.js";
 import { Submission } from "../models/Submission.js";
+import { User } from "../models/User.js";
 import { addDependency } from "../services/dependencies.js";
 import { asyncHandler, AppError } from "../utils/errors.js";
 
@@ -59,7 +60,7 @@ taskRouter.post("/", asyncHandler(async (req: AuthRequest, res) => {
     dueDate: z.coerce.date().optional(),
     labels: z.array(z.string()).default([]),
     estimatedEffort: z.number().min(0).default(1),
-    attachments: z.array(z.object({ name: z.string(), url: z.string(), type: z.string().optional(), size: z.number().optional() })).default([])
+    attachments: z.array(z.object({ name: z.string(), url: z.string().optional(), key: z.string().optional(), type: z.string().optional(), size: z.number().optional() })).default([])
   }).parse(req.body);
   const project = await Project.findById(body.project);
   if (!project) throw new AppError(404, "Project not found");
@@ -67,7 +68,7 @@ taskRouter.post("/", asyncHandler(async (req: AuthRequest, res) => {
   if (body.assignee && !project.members.some((member: any) => member.toString() === body.assignee)) throw new AppError(400, "Assignee must be a member of this project");
   const task = await Task.create({ ...body, workspace: project.workspace, creator: req.user!.id, watchers: [req.user!.id] });
   await ActivityLog.create({ workspace: project.workspace, project: project._id, task: task._id, actor: req.user!.id, action: "TASK_CREATED", metadata: { title: task.title } });
-  if (body.assignee) await Notification.create({ user: body.assignee, workspace: project.workspace, project: project._id, task: task._id, type: "TASK_ASSIGNED", message: `You were assigned: ${task.title}` });
+  if (body.assignee && body.assignee !== req.user!.id) await Notification.create({ user: body.assignee, workspace: project.workspace, project: project._id, task: task._id, type: "TASK_ASSIGNED", message: `You were assigned: ${task.title}` });
   await notifyProjectAudience(project, { task: task._id, type: "TASK_CREATED", message: `New task created: ${task.title}` }, [req.user!.id, body.assignee ?? ""]);
   req.app.get("io")?.to(`project:${project._id}`).emit("task:created", task);
   res.status(201).json({ success: true, data: task });
@@ -86,7 +87,7 @@ taskRouter.patch("/:id", asyncHandler(async (req: AuthRequest, res) => {
     dueDate: z.coerce.date().optional(),
     labels: z.array(z.string()).optional(),
     estimatedEffort: z.number().min(0).optional(),
-    attachments: z.array(z.object({ name: z.string(), url: z.string(), type: z.string().optional(), size: z.number().optional() })).optional()
+    attachments: z.array(z.object({ name: z.string(), url: z.string().optional(), key: z.string().optional(), type: z.string().optional(), size: z.number().optional() })).optional()
   }).parse(req.body);
   const before = task.toObject();
   const hasStatusChange = Object.prototype.hasOwnProperty.call(body, "status") && body.status !== before.status;
@@ -108,7 +109,7 @@ taskRouter.patch("/:id", asyncHandler(async (req: AuthRequest, res) => {
   if (task.status !== "DONE") task.actualCompletedDate = undefined;
   await task.save();
   await ActivityLog.create({ workspace: task.workspace, project: task.project, task: task._id, actor: req.user!.id, action: "TASK_UPDATED", metadata: { beforeStatus: before.status, afterStatus: task.status, fields: Object.keys(body) } });
-  if (body.assignee && body.assignee !== before.assignee?.toString()) {
+  if (body.assignee && body.assignee !== before.assignee?.toString() && body.assignee !== req.user!.id) {
     await Notification.create({ user: body.assignee, workspace: task.workspace, project: task.project, task: task._id, type: "TASK_ASSIGNED", message: `You were assigned: ${task.title}` });
   }
   if (task.status === "DONE" && before.status !== "DONE") {
@@ -129,13 +130,15 @@ taskRouter.get("/:id/submissions", asyncHandler(async (req: AuthRequest, res) =>
 taskRouter.post("/:id/submissions", asyncHandler(async (req: AuthRequest, res) => {
   const task = await Task.findById(req.params.id);
   if (!task) throw new AppError(404, "Task not found");
-  const { project } = await requireProjectAccess(req.user!.id, task.project.toString(), ["MEMBER"]);
+  const { project, role } = await requireProjectAccess(req.user!.id, task.project.toString(), ["MEMBER"]);
   const isTaskOwner = task.assignee?.toString() === req.user!.id;
   if (!isTaskOwner) throw new AppError(403, "Only the assigned task owner can submit work for review.");
+  const canSelfApprove = ["OWNER", "ADMIN"].includes(role);
   const body = z.object({
     note: z.string().optional(),
-    files: z.array(z.object({ name: z.string().min(1), url: z.string().min(1), type: z.string().optional(), size: z.number().optional() })).min(1, "Add at least one file or link.")
+    files: z.array(z.object({ name: z.string().min(1), url: z.string().optional(), key: z.string().optional(), type: z.string().optional(), size: z.number().optional() })).min(1, "Add at least one file or link.")
   }).parse(req.body);
+  if (body.files.some((file) => !file.url && !file.key)) throw new AppError(400, "Each submitted file needs either an uploaded file or a valid link.");
   const unfinishedDependencies = await Task.countDocuments({ _id: { $in: task.dependencies }, status: { $ne: "DONE" } });
   if (unfinishedDependencies > 0) throw new AppError(400, "This task is blocked. Complete its dependencies before submitting.");
   const previousVersion = await Submission.findOne({ task: task._id }).sort({ version: -1 });
@@ -145,15 +148,23 @@ taskRouter.post("/:id/submissions", asyncHandler(async (req: AuthRequest, res) =
     task: task._id,
     submitter: req.user!.id,
     version: (previousVersion?.version ?? 0) + 1,
-    status: "PENDING_REVIEW",
+    status: canSelfApprove ? "APPROVED" : "PENDING_REVIEW",
     note: body.note,
-    files: body.files
+    files: body.files,
+    reviewer: canSelfApprove ? req.user!.id : undefined,
+    reviewedAt: canSelfApprove ? new Date() : undefined,
+    reviewNote: canSelfApprove ? "Approved automatically because the task owner can review project work." : undefined
   });
-  task.status = "IN_REVIEW";
+  task.status = canSelfApprove ? "DONE" : "IN_REVIEW";
+  if (canSelfApprove) task.actualCompletedDate = new Date();
   task.attachments = body.files;
   await task.save();
-  await ActivityLog.create({ workspace: task.workspace, project: task.project, task: task._id, actor: req.user!.id, action: "SUBMISSION_CREATED", metadata: { version: submission.version, files: body.files.length } });
-  await notifyProjectAudience(project, { task: task._id, type: "SUBMISSION_READY", message: `${task.title} was submitted for review.` }, [req.user!.id]);
+  await ActivityLog.create({ workspace: task.workspace, project: task.project, task: task._id, actor: req.user!.id, action: canSelfApprove ? "SUBMISSION_APPROVED" : "SUBMISSION_CREATED", metadata: { version: submission.version, files: body.files.length, selfApproved: canSelfApprove } });
+  await notifyProjectAudience(
+    project,
+    { task: task._id, type: canSelfApprove ? "SUBMISSION_APPROVED" : "SUBMISSION_READY", message: canSelfApprove ? `${task.title} was added to final delivery.` : `${task.title} was submitted for review.` },
+    [req.user!.id]
+  );
   req.app.get("io")?.to(`project:${task.project}`).emit("submission:created", submission);
   res.status(201).json({ success: true, data: submission });
 }));
@@ -234,15 +245,20 @@ taskRouter.get("/:id/comments", asyncHandler(async (req: AuthRequest, res) => {
 taskRouter.post("/:id/comments", asyncHandler(async (req: AuthRequest, res) => {
   const task = await Task.findById(req.params.id);
   if (!task) throw new AppError(404, "Task not found");
-  await requireProjectAccess(req.user!.id, task.project.toString(), ["MEMBER"]);
+  const { project } = await requireProjectAccess(req.user!.id, task.project.toString(), ["MEMBER"]);
   const body = z.object({ body: z.string().min(1), mentions: z.array(z.string()).default([]) }).parse(req.body);
-  const comment = await Comment.create({ task: task._id, author: req.user!.id, body: body.body, mentions: body.mentions });
+  const actor = await User.findById(req.user!.id).select("name username email");
+  const actorName = actor?.name ?? actor?.username ?? "A teammate";
+  const validMentions = [...new Set(body.mentions)].filter((id) => id !== req.user!.id && project.members.some((member: any) => member.toString() === id));
+  const comment = await Comment.create({ task: task._id, author: req.user!.id, body: body.body, mentions: validMentions });
   await ActivityLog.create({ workspace: task.workspace, project: task.project, task: task._id, actor: req.user!.id, action: "COMMENT_ADDED" });
   if (task.assignee && task.assignee.toString() !== req.user!.id) {
-    await Notification.create({ user: task.assignee, workspace: task.workspace, project: task.project, task: task._id, type: "COMMENT_ADDED", message: `New comment on: ${task.title}` });
+    const notification = await Notification.create({ user: task.assignee, workspace: task.workspace, project: task.project, task: task._id, type: "COMMENT_ADDED", message: `${actorName} commented on ${task.title}` });
+    req.app.get("io")?.to(`user:${task.assignee}`).emit("notification:new", notification);
   }
-  for (const mentioned of body.mentions.filter((id) => id !== req.user!.id)) {
-    await Notification.create({ user: mentioned, workspace: task.workspace, project: task.project, task: task._id, type: "COMMENT_MENTION", message: `You were mentioned on: ${task.title}` });
+  for (const mentioned of validMentions) {
+    const notification = await Notification.create({ user: mentioned, workspace: task.workspace, project: task.project, task: task._id, type: "COMMENT_MENTION", message: `${actorName} mentioned you on ${task.title}` });
+    req.app.get("io")?.to(`user:${mentioned}`).emit("notification:new", notification);
   }
   req.app.get("io")?.to(`project:${task.project}`).emit("comment:added", comment);
   res.status(201).json({ success: true, data: comment });

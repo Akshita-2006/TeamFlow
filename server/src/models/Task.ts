@@ -14,7 +14,7 @@ export interface ITask {
   priority: TaskPriority;
   dueDate?: Date;
   labels: string[];
-  attachments: { name: string; url: string; type?: string; size?: number }[];
+  attachments: { name: string; url?: string; key?: string; type?: string; size?: number }[];
   estimatedEffort: number;
   actualCompletedDate?: Date;
   dependencies: Types.ObjectId[];
@@ -26,6 +26,7 @@ const attachmentSchema = new mongoose.Schema(
   {
     name: String,
     url: String,
+    key: String,
     type: String,
     size: Number
   },

@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bell, CheckCircle2 } from "lucide-react";
 import { api } from "../lib/api";
 
 const notificationLabel = (type: string) => {
@@ -36,10 +37,22 @@ export function Notifications() {
   }
   return (
     <section className="space-y-4">
-      <div><h2 className="page-title">Notifications</h2><p className="page-subtitle">Assignment and collaboration updates with read/unread state.</p></div>
+      <div><h2 className="page-title">Notifications</h2><p className="page-subtitle">Mentions, assignments, invites and review updates for your current work.</p></div>
       {(notifications.data ?? []).map((item: any) => (
-        <article className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={item._id}>
-          <div><p className="font-medium">{item.message}</p><p className="text-sm text-slate-500">{notificationLabel(item.type)}</p></div>
+        <article className={`panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${item.readAt ? "opacity-75" : "border-[#9fcbd6]"}`} key={item._id}>
+          <div className="flex min-w-0 gap-3">
+            <span className={`mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-lg ${item.readAt ? "bg-[#edf0df] text-[#596344]" : "bg-[#d7edf2] text-[#365f66]"}`}>
+              {item.readAt ? <CheckCircle2 size={18} /> : <Bell size={18} />}
+            </span>
+            <div className="min-w-0">
+              <p className="font-bold text-[#263333]">{item.message}</p>
+              <p className="mt-1 text-sm text-[#6f7b73]">
+                {notificationLabel(item.type)}
+                {item.project?.name ? ` · ${item.project.name}` : ""}
+                {item.task?.title ? ` · ${item.task.title}` : ""}
+              </p>
+            </div>
+          </div>
           {!item.readAt && <button className="btn-primary w-full sm:w-auto" onClick={() => markRead(item._id)}>Mark read</button>}
         </article>
       ))}

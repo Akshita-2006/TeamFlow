@@ -7,7 +7,7 @@ const steps = [
   ["Create projects", "Open Projects and create separate projects for separate work. Each project can have its own deadline and team."],
   ["Choose project members", "Open a project and add people from the workspace team into that project. Only project members appear in task assignment."],
   ["Add tasks and owners", "Create tasks with title, due date, priority, labels, effort and description. Assign each task to a project member or leave it unassigned."],
-  ["Submit work for review", "The assigned owner attaches file/code links and submits the task for review. TeamFlow moves it to In Review."],
+  ["Submit work for review", "The assigned owner attaches files or links and submits the task for review. TeamFlow moves it to In Review."],
   ["Approve or request changes", "Owner/admin uses the review inbox to approve, reject, or ask for changes. Approved submissions mark the task Done."],
   ["Use the delivery room", "Approved versions appear in Delivery, so final files and code links stay separate from work still under review."],
   ["Use comments and notifications", "Add comments, mention teammates and track notifications from the top menu. Unread notifications show a count until marked read."],
@@ -17,10 +17,10 @@ const steps = [
 ];
 
 const highlights = [
-  { icon: MailPlus, title: "Email invites", text: "Invite links and password reset links use the configured TeamFlow URL." },
-  { icon: Shield, title: "Role rules", text: "Owner/admin/member/viewer permissions are checked on the backend." },
-  { icon: FileCheck2, title: "Review gate", text: "Members cannot directly mark work Done; approval turns submissions into deliverables." },
-  { icon: Cloud, title: "Cloud-ready files", text: "File links and code links are saved with versions. Real storage can be plugged in later." },
+  { icon: MailPlus, title: "Simple invites", text: "Add registered users directly or send invite links to new teammates." },
+  { icon: Shield, title: "Clear roles", text: "Owner, admin, member and viewer actions stay separated." },
+  { icon: FileCheck2, title: "Review gate", text: "Work becomes Done only after a reviewer approves it." },
+  { icon: Cloud, title: "Cloud files", text: "Submissions keep uploaded files, links, versions and review notes together." },
 ];
 
 export function HowTo() {

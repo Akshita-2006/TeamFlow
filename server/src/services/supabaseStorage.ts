@@ -46,3 +46,26 @@ export async function createSupabaseSignedUpload(input: { userId: string; worksp
     }
   };
 }
+
+export async function createSupabaseSignedDownload(path: string, expiresIn = 300) {
+  if (!isSupabaseConfigured()) {
+    throw new AppError(400, "Supabase Storage is not configured yet.");
+  }
+  const baseUrl = config.supabaseUrl!.replace(/\/$/, "");
+  const bucket = config.supabaseStorageBucket!;
+  const signUrl = `${baseUrl}/storage/v1/object/sign/${encodeURIComponent(bucket)}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  const response = await fetch(signUrl, {
+    method: "POST",
+    headers: {
+      apikey: config.supabaseServiceRoleKey!,
+      Authorization: `Bearer ${config.supabaseServiceRoleKey!}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ expiresIn })
+  });
+  const payload: any = await response.json().catch(() => ({}));
+  if (!response.ok) throw new AppError(400, payload.message ?? payload.error ?? "Could not create file access link.");
+  const signedUrl = payload.signedUrl ?? payload.signedURL ?? (payload.signedURL ? `${baseUrl}/storage/v1${payload.signedURL}` : "");
+  if (!signedUrl) throw new AppError(400, "Supabase did not return a file access link.");
+  return signedUrl.startsWith("http") ? signedUrl : `${baseUrl}/storage/v1${signedUrl}`;
+}
