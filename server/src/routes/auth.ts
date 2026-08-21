@@ -10,6 +10,7 @@ import { Notification } from "../models/Notification.js";
 import { ActivityLog } from "../models/ActivityLog.js";
 import { Token, createPlainToken, hashToken } from "../models/Token.js";
 import { sendMail } from "../services/mail.js";
+import { passwordResetEmail } from "../services/emailTemplates.js";
 import { config } from "../config.js";
 import { asyncHandler, AppError } from "../utils/errors.js";
 import { requireAuth, signToken, type AuthRequest } from "../middleware/auth.js";
@@ -56,21 +57,10 @@ authRouter.post(
       await Token.create({ user: user._id, email: user.email, purpose: "PASSWORD_RESET", tokenHash: hashToken(plain), expiresAt: new Date(Date.now() + 1000 * 60 * 30) });
       const resetUrl = `${config.clientUrl}/reset-password?token=${plain}`;
       try {
+        const template = passwordResetEmail({ name: user.name, resetUrl });
         const mail = await sendMail({
           to: user.email,
-          subject: "Reset your TeamFlow password",
-          text: [
-            `Hi ${user.name},`,
-            "",
-            "We received a request to reset the password for your TeamFlow account.",
-            "",
-            "Open this secure link to choose a new password:",
-            resetUrl,
-            "",
-            "This link expires in 30 minutes. If you did not request this, you can safely ignore this email and your password will stay the same.",
-            "",
-            "TeamFlow"
-          ].join("\n")
+          ...template
         });
         if (!mail.delivered && process.env.NODE_ENV !== "production") devLink = resetUrl;
       } catch (error) {

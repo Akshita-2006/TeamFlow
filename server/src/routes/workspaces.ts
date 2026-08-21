@@ -13,6 +13,7 @@ import { Notification } from "../models/Notification.js";
 import { Submission } from "../models/Submission.js";
 import { createPlainToken, hashToken } from "../models/Token.js";
 import { sendMail } from "../services/mail.js";
+import { workspaceInviteEmail, workspaceMemberEmail } from "../services/emailTemplates.js";
 import { config } from "../config.js";
 
 export const workspaceRouter = Router();
@@ -134,24 +135,14 @@ workspaceRouter.post(
       const inviteUrl = `${config.clientUrl}/accept-invite?token=${plain}`;
       let devLink: string | undefined;
       try {
+        const template = workspaceInviteEmail({
+          workspaceName: workspace.name,
+          role: body.role,
+          inviteUrl,
+        });
         const mail = await sendMail({
           to: email,
-          subject: `${workspace.name} invited you to TeamFlow`,
-          text: [
-            "Hi there,",
-            "",
-            `You have been invited to join ${workspace.name} on TeamFlow as ${body.role}.`,
-            "",
-            "TeamFlow helps your project team manage tasks, owners, deadlines, comments and blockers in one workspace.",
-            "",
-            "Accept your invite here:",
-            inviteUrl,
-            "",
-            "If you do not have an account yet, register with this same email first, then open the invite link again.",
-            "This invite expires in 7 days.",
-            "",
-            "TeamFlow",
-          ].join("\n"),
+          ...template,
         });
         if (!mail.delivered && process.env.NODE_ENV !== "production")
           devLink = inviteUrl;
@@ -205,34 +196,16 @@ workspaceRouter.post(
       [user._id.toString()],
     );
     try {
+      const template = workspaceMemberEmail({
+        name: user.name,
+        workspaceName: workspace.name,
+        role: body.role,
+        appUrl: `${config.clientUrl}/app`,
+        roleChanged: wasAlreadyMember,
+      });
       await sendMail({
         to: user.email,
-        subject: wasAlreadyMember
-          ? `Your role changed in ${workspace.name}`
-          : `You were added to ${workspace.name}`,
-        text: wasAlreadyMember
-          ? [
-              `Hi ${user.name},`,
-              "",
-              `Your role in ${workspace.name} has been updated to ${body.role}.`,
-              "",
-              "Open your workspace:",
-              `${config.clientUrl}/app`,
-              "",
-              "TeamFlow",
-            ].join("\n")
-          : [
-              `Hi ${user.name},`,
-              "",
-              `You have been added to ${workspace.name} on TeamFlow as ${body.role}.`,
-              "",
-              "You can now open the workspace, view projects you have access to, and collaborate on assigned work.",
-              "",
-              "Open your workspace:",
-              `${config.clientUrl}/app`,
-              "",
-              "TeamFlow",
-            ].join("\n"),
+        ...template,
       });
     } catch (error) {
       console.warn("[mail] member notification email failed", error);

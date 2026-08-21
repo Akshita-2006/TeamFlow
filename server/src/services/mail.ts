@@ -25,12 +25,27 @@ async function command(socket: net.Socket | tls.TLSSocket, line: string, expecte
   return response;
 }
 
+type MailMessage = {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+};
+
 function encodeAddress(value: string) {
   const match = value.match(/<([^>]+)>/);
   return match?.[1] ?? value;
 }
 
-export async function sendMail({ to, subject, text }: { to: string; subject: string; text: string }) {
+function encodeHeader(value: string) {
+  return value.replace(/\r?\n/g, " ");
+}
+
+function encodeBody(value: string) {
+  return value.replace(/^\./gm, "..");
+}
+
+export async function sendMail({ to, subject, text, html }: MailMessage) {
   if (!config.smtpHost || !config.smtpUser || !config.smtpPass) {
     console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n${text}`);
     return { delivered: false, mode: "console" };
@@ -50,16 +65,38 @@ export async function sendMail({ to, subject, text }: { to: string; subject: str
   await command(secure, `MAIL FROM:<${fromEmail}>`, [250]);
   await command(secure, `RCPT TO:<${to}>`, [250, 251]);
   await command(secure, "DATA", [354]);
-  const body = [
+  const headers = [
     `From: ${from}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeHeader(subject)}`,
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=utf-8",
-    "",
-    text.replace(/^\./gm, ".."),
-    "."
-  ].join("\r\n");
+  ];
+  const body = html
+    ? [
+        ...headers,
+        "Content-Type: multipart/alternative; boundary=teamflow-email-boundary",
+        "",
+        "--teamflow-email-boundary",
+        "Content-Type: text/plain; charset=utf-8",
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        encodeBody(text),
+        "--teamflow-email-boundary",
+        "Content-Type: text/html; charset=utf-8",
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        encodeBody(html),
+        "--teamflow-email-boundary--",
+        "."
+      ].join("\r\n")
+    : [
+        ...headers,
+        "Content-Type: text/plain; charset=utf-8",
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        encodeBody(text),
+        "."
+      ].join("\r\n");
   secure.write(`${body}\r\n`);
   await readLine(secure);
   await command(secure, "QUIT", [221]);

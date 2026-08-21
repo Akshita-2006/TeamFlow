@@ -242,10 +242,17 @@ describe("TeamFlow feature smoke flow", () => {
     expect(memberActivity.body.data.length).toBeGreaterThan(0);
     expect(memberActivity.body.data.every((item: any) => item.actor?._id === member.user.id)).toBe(true);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const activityDate = new Date(allActivity.body.data[0].createdAt);
+    const fromDate = new Date(activityDate);
+    fromDate.setUTCDate(fromDate.getUTCDate() - 1);
+    const toDate = new Date(activityDate);
+    toDate.setUTCDate(toDate.getUTCDate() + 1);
     const datedActivity = await request(app)
       .get(`/api/workspaces/${workspace._id}/activity`)
-      .query({ from: today, to: today })
+      .query({
+        from: fromDate.toISOString().slice(0, 10),
+        to: toDate.toISOString().slice(0, 10),
+      })
       .set("Authorization", `Bearer ${owner.token}`);
     expect(datedActivity.status).toBe(200);
     expect(datedActivity.body.data.length).toBeGreaterThan(0);
