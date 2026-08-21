@@ -8,6 +8,7 @@ import { Task } from "../models/Task.js";
 import { Comment } from "../models/Comment.js";
 import { Notification } from "../models/Notification.js";
 import { ActivityLog } from "../models/ActivityLog.js";
+import { Invite } from "../models/Invite.js";
 import { Token, createPlainToken, hashToken } from "../models/Token.js";
 import { sendMail } from "../services/mail.js";
 import { passwordResetEmail } from "../services/emailTemplates.js";
@@ -21,6 +22,63 @@ function publicUser(user: any) {
   return { id: user._id, name: user.name, username: user.username, email: user.email };
 }
 
+async function acceptPendingInvitesForUser(user: any) {
+  const invites = await Invite.find({
+    email: user.email,
+    status: "PENDING",
+    expiresAt: { $gt: new Date() },
+  });
+  if (invites.length === 0) return [];
+
+  const joinedWorkspaceIds: string[] = [];
+  for (const invite of invites) {
+    const workspace = await Workspace.findById(invite.workspace);
+    if (!workspace) continue;
+
+    const existing = workspace.members.find((member) => member.user.toString() === user._id.toString());
+    if (existing) existing.role = invite.role;
+    else workspace.members.push({ user: user._id, role: invite.role });
+    await workspace.save();
+
+    if (invite.project) {
+      const project = await Project.findById(invite.project);
+      if (project && !project.members.some((member) => member.toString() === user._id.toString())) {
+        project.members.push(user._id as any);
+        await project.save();
+      }
+    }
+
+    invite.status = "ACCEPTED";
+    invite.acceptedAt = new Date();
+    await invite.save();
+    joinedWorkspaceIds.push(workspace._id.toString());
+
+    const managerIds = workspace.members
+      .filter((member: any) => ["OWNER", "ADMIN"].includes(member.role))
+      .map((member: any) => member.user.toString())
+      .filter((userId: string, index: number, list: string[]) => userId !== user._id.toString() && list.indexOf(userId) === index);
+    if (managerIds.length > 0) {
+      await Notification.insertMany(
+        managerIds.map((managerId) => ({
+          user: managerId,
+          workspace: workspace._id,
+          type: "INVITE_ACCEPTED",
+          message: `${user.name} accepted the invite to ${workspace.name}.`,
+        })),
+      );
+    }
+    await Notification.create({
+      user: user._id,
+      workspace: workspace._id,
+      project: invite.project,
+      type: "WORKSPACE_JOINED",
+      message: `You joined ${workspace.name} as ${invite.role}.`,
+    });
+  }
+
+  return joinedWorkspaceIds;
+}
+
 authRouter.post(
   "/register",
   asyncHandler(async (req, res) => {
@@ -29,9 +87,10 @@ authRouter.post(
     const exists = await User.findOne({ $or: [{ email: body.email.toLowerCase() }, { username }] });
     if (exists?.email === body.email.toLowerCase()) throw new AppError(409, "Email is already registered");
     if (exists?.username === username) throw new AppError(409, "Username is already taken");
-    const user = await User.create({ name: body.name, username, email: body.email, passwordHash: await bcrypt.hash(body.password, 12) });
+    const user = await User.create({ name: body.name, username, email: body.email.toLowerCase(), passwordHash: await bcrypt.hash(body.password, 12) });
     await Workspace.create({ name: `${body.name}'s Workspace`, owner: user._id, members: [{ user: user._id, role: "OWNER" }] });
-    res.status(201).json({ success: true, token: signToken(user._id.toString()), user: publicUser(user) });
+    const acceptedInviteWorkspaceIds = await acceptPendingInvitesForUser(user);
+    res.status(201).json({ success: true, token: signToken(user._id.toString()), user: publicUser(user), acceptedInviteWorkspaceIds });
   })
 );
 

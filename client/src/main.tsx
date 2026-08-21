@@ -42,7 +42,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/accept-invite" element={<Protected><AcceptInvite /></Protected>} />
+          <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/app" element={<Protected><AppShell /></Protected>}>
             <Route index element={<Dashboard />} />
             <Route path="projects" element={<Projects />} />

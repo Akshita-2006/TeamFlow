@@ -21,7 +21,7 @@ config.brevoApiKey = undefined;
 async function register(email: string, username: string, name: string) {
   const response = await request(app).post("/api/auth/register").send({ email, username, name, password: "password123" });
   expect(response.status).toBe(201);
-  return { token: response.body.token as string, user: response.body.user as any };
+  return { token: response.body.token as string, user: response.body.user as any, acceptedInviteWorkspaceIds: response.body.acceptedInviteWorkspaceIds as string[] };
 }
 
 async function getWorkspace(token: string) {
@@ -208,13 +208,15 @@ describe("TeamFlow feature smoke flow", () => {
     expect(unread.body.data.count).toBeGreaterThan(0);
 
     const acceptedUser = await register("newperson@example.com", "new_person", "New Person");
+    expect(acceptedUser.acceptedInviteWorkspaceIds).toContain(workspace._id);
+    expect(await notificationTypes(acceptedUser.token)).toContain("WORKSPACE_JOINED");
+    expect(await notificationTypes(owner.token)).toContain("INVITE_ACCEPTED");
     const accept = await request(app)
       .post("/api/workspaces/invites/accept")
       .set("Authorization", `Bearer ${acceptedUser.token}`)
       .send({ token: inviteToken });
-    expect(accept.status).toBe(200);
-    expect(await notificationTypes(acceptedUser.token)).toContain("WORKSPACE_JOINED");
-    expect(await notificationTypes(owner.token)).toContain("INVITE_ACCEPTED");
+    expect(accept.status).toBe(409);
+    expect(accept.body.error).toContain("already been accepted");
     const pendingAfterAccept = await Invite.find({ workspace: workspace._id, status: "PENDING" });
     expect(pendingAfterAccept).toHaveLength(0);
 

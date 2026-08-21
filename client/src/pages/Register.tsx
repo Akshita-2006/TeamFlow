@@ -15,7 +15,13 @@ export function Register() {
     try {
       const { data } = await api.post("/auth/register", Object.fromEntries(new FormData(event.currentTarget)));
       setAuth(data.token, data.user);
-      navigate(params.get("redirect") || "/app");
+      const acceptedWorkspaceId = data.acceptedInviteWorkspaceIds?.[0];
+      if (acceptedWorkspaceId) {
+        localStorage.setItem("teamflow.activeWorkspaceId", acceptedWorkspaceId);
+        window.dispatchEvent(new CustomEvent("teamflow:active-workspace-changed", { detail: acceptedWorkspaceId }));
+      }
+      const redirect = params.get("redirect");
+      navigate(acceptedWorkspaceId && (!redirect || redirect.startsWith("/accept-invite")) ? "/app/team" : redirect || "/app");
     } catch (err: any) {
       setError(err.response?.data?.error ?? "Registration failed");
     }
