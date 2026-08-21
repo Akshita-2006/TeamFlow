@@ -40,7 +40,7 @@ export async function createSupabaseSignedUpload(input: { userId: string; worksp
     path,
     file: {
       name: input.fileName,
-      url: `${baseUrl}/storage/v1/object/public/${bucket}/${path}`,
+      url: "",
       key: path,
       type: input.contentType
     }

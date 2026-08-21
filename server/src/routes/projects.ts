@@ -30,6 +30,7 @@ projectRouter.post("/", asyncHandler(async (req: AuthRequest, res) => {
   const { workspace } = await requireWorkspaceRole(req.user!.id, body.workspace, ["ADMIN"]);
   const memberIds = Array.from(new Set([req.user!.id, workspace.owner.toString()]));
   const project = await Project.create({ ...body, owner: req.user!.id, members: memberIds });
+  await ActivityLog.create({ workspace: workspace._id, project: project._id, actor: req.user!.id, action: "PROJECT_CREATED", metadata: { name: project.name } });
   res.status(201).json({ success: true, data: project });
 }));
 
@@ -53,6 +54,7 @@ projectRouter.patch("/:id", asyncHandler(async (req: AuthRequest, res) => {
   await requireProjectAccess(req.user!.id, project, ["ADMIN"]);
   Object.assign(project, z.object({ name: z.string().optional(), description: z.string().optional(), status: z.enum(["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED"]).optional(), deadline: z.coerce.date().optional() }).parse(req.body));
   await project.save();
+  await ActivityLog.create({ workspace: project.workspace, project: project._id, actor: req.user!.id, action: "PROJECT_UPDATED" });
   res.json({ success: true, data: project });
 }));
 
@@ -68,6 +70,7 @@ projectRouter.post("/:id/transfer-owner", asyncHandler(async (req: AuthRequest, 
   if (!project.members.some((member) => member.toString() === body.userId)) project.members.push(body.userId as any);
   project.owner = body.userId as any;
   await project.save();
+  await ActivityLog.create({ workspace: project.workspace, project: project._id, actor: req.user!.id, action: "PROJECT_OWNER_TRANSFERRED", metadata: { userId: body.userId } });
   await project.populate("members", "name username email");
   await project.populate("owner", "name username email");
   res.json({ success: true, data: project, message: "Project ownership transferred." });
@@ -80,6 +83,7 @@ projectRouter.delete("/:id", asyncHandler(async (req: AuthRequest, res) => {
   project.deletedAt = new Date();
   await project.save();
   await Task.updateMany({ project: project._id }, { deletedAt: new Date() });
+  await ActivityLog.create({ workspace: project.workspace, project: project._id, actor: req.user!.id, action: "PROJECT_DELETED", metadata: { name: project.name } });
   res.status(204).end();
 }));
 
@@ -102,6 +106,7 @@ projectRouter.post("/:id/members", asyncHandler(async (req: AuthRequest, res) =>
     await project.save();
   }
   await project.populate("members", "name username email");
+  await ActivityLog.create({ workspace: project.workspace, project: project._id, actor: req.user!.id, action: "PROJECT_MEMBER_ADDED", metadata: { userId: body.userId } });
   res.status(201).json({ success: true, data: project });
 }));
 
@@ -116,6 +121,7 @@ projectRouter.delete("/:id/members/:userId", asyncHandler(async (req: AuthReques
   await Task.updateMany({ project: project._id, assignee: req.params.userId }, { $unset: { assignee: "" } });
   await Comment.deleteMany({ task: { $in: taskIds }, author: req.params.userId });
   await project.populate("members", "name username email");
+  await ActivityLog.create({ workspace: project.workspace, project: project._id, actor: req.user!.id, action: "PROJECT_MEMBER_REMOVED", metadata: { userId: req.params.userId } });
   res.json({ success: true, data: project });
 }));
 
@@ -127,6 +133,7 @@ projectRouter.post("/:id/archive", asyncHandler(async (req: AuthRequest, res) =>
   project.archivedAt = new Date();
   project.status = "COMPLETED";
   await project.save();
+  await ActivityLog.create({ workspace: project.workspace, project: project._id, actor: req.user!.id, action: "PROJECT_ARCHIVED" });
   res.json({ success: true, data: project });
 }));
 
@@ -137,6 +144,7 @@ projectRouter.post("/:id/unarchive", asyncHandler(async (req: AuthRequest, res) 
   project.archivedAt = undefined;
   project.status = "ACTIVE";
   await project.save();
+  await ActivityLog.create({ workspace: project.workspace, project: project._id, actor: req.user!.id, action: "PROJECT_UNARCHIVED" });
   res.json({ success: true, data: project });
 }));
 projectRouter.get("/:id/dependency-analysis", asyncHandler(async (req: AuthRequest, res) => {

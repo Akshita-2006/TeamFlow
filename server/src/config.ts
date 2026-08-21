@@ -17,12 +17,6 @@ export const config = {
   smtpUser: process.env.SMTP_USER,
   smtpPass: process.env.SMTP_PASS,
   mailFrom: process.env.MAIL_FROM ?? "TeamFlow <noreply@teamflow.local>",
-  awsRegion: process.env.AWS_REGION,
-  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  awsS3Bucket: process.env.AWS_S3_BUCKET,
-  awsS3PublicBaseUrl: process.env.AWS_S3_PUBLIC_BASE_URL,
-  storageProvider: process.env.STORAGE_PROVIDER ?? "supabase",
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET

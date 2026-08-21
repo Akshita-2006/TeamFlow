@@ -219,5 +219,35 @@ describe("TeamFlow feature smoke flow", () => {
 
     const storedWorkspace = await Workspace.findById(workspace._id);
     expect(storedWorkspace?.members.some((item: any) => item.user.toString() === owner.user.id && item.role === "OWNER")).toBe(true);
+
+    const allActivity = await request(app)
+      .get(`/api/workspaces/${workspace._id}/activity`)
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(allActivity.status).toBe(200);
+    expect(allActivity.body.data.length).toBeGreaterThan(0);
+
+    const projectActivity = await request(app)
+      .get(`/api/workspaces/${workspace._id}/activity`)
+      .query({ project: project._id })
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(projectActivity.status).toBe(200);
+    expect(projectActivity.body.data.length).toBeGreaterThan(0);
+    expect(projectActivity.body.data.every((item: any) => item.project?._id === project._id)).toBe(true);
+
+    const memberActivity = await request(app)
+      .get(`/api/workspaces/${workspace._id}/activity`)
+      .query({ actor: member.user.id })
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(memberActivity.status).toBe(200);
+    expect(memberActivity.body.data.length).toBeGreaterThan(0);
+    expect(memberActivity.body.data.every((item: any) => item.actor?._id === member.user.id)).toBe(true);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const datedActivity = await request(app)
+      .get(`/api/workspaces/${workspace._id}/activity`)
+      .query({ from: today, to: today })
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(datedActivity.status).toBe(200);
+    expect(datedActivity.body.data.length).toBeGreaterThan(0);
   }, 15000);
 });

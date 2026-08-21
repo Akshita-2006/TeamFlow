@@ -1,12 +1,16 @@
 # TeamFlow
 
-TeamFlow is a cloud work review and delivery platform for teams that need more than a task board. It helps teams assign work, submit files, review changes, approve deliverables, track blockers, and keep final project delivery organized.
+TeamFlow is a project delivery governance workspace for teams that need more than a task board. It helps teams assign work, submit outputs, review changes, approve final versions, track blockers, and keep project deliverables organized.
 
 ## Problem Statement
 
 In many teams, work is assigned in one place, files are shared somewhere else, feedback happens in chat, and final approved deliverables are hard to identify later. This creates confusion around who owns the work, which version is final, what still needs review, and what is blocked.
 
-TeamFlow solves this by combining task ownership, project-specific teams, cloud file submissions, review approval, delivery tracking, notifications, workload insights, and dependency visibility in one workspace.
+TeamFlow solves this by combining task ownership, project-specific teams, private cloud file submissions, review approval, delivery tracking, notifications, audit trails, workload insights, and dependency visibility in one workspace.
+
+## Why It Stands Out
+
+TeamFlow does not try to replace GitHub or cloud drives. GitHub manages source history, while TeamFlow manages delivery governance: who owns the work, what was submitted, who reviewed it, which version was approved, what is blocked, and what stakeholders can safely inspect.
 
 ## Core Use Case
 
@@ -32,16 +36,20 @@ MongoDB remains the primary database. Supabase Storage is used only for uploaded
 - Submit-for-review workflow
 - Approval, rejection and change-request decisions
 - Delivery room for approved submissions
+- Deliverables hub with review-state buckets
 - Supabase Storage upload support
+- Private signed file download links
 - Manual file/link fallback when cloud upload is not configured
 - Versioned submissions with review notes
-- Comments and mentions
+- Comments and teammate notifications
 - In-app notifications with unread count
 - Project dependency and blocker tracking
+- Cross-project delivery pulse dashboard
 - Blocked-task movement restrictions
 - Workload and deadline views
 - Calendar notes and deadlines
-- Audit activity views
+- Audit trail with project/date/member filters
+- Viewer mode for read-only stakeholder access
 - Responsive dashboard, profile and project flows
 
 ## Project Phases
@@ -59,8 +67,8 @@ MongoDB remains the primary database. Supabase Storage is used only for uploaded
 - Team invites
 - Project-specific members
 - Task assignment
-- Comments and mentions
-- Notifications
+- Comments and teammate notifications
+- Realtime notification updates
 
 ### Phase 3: Delivery Workflow
 
@@ -68,13 +76,14 @@ MongoDB remains the primary database. Supabase Storage is used only for uploaded
 - File/link attachments
 - Review inbox
 - Approve, reject, request changes
-- Approved delivery room
+- Deliverables hub and approved delivery room
 - Submission version history
 
-### Phase 4: Intelligence
+### Phase 4: Project Intelligence
 
 - Dependency graph
 - Blocker detection
+- Delivery pulse analytics
 - Workload view
 - Dashboard summaries
 - Deadlines and calendar
@@ -83,6 +92,7 @@ MongoDB remains the primary database. Supabase Storage is used only for uploaded
 ### Phase 5: Cloud Storage
 
 - Supabase Storage signed uploads
+- Private signed download links
 - MongoDB metadata persistence
 - Manual link fallback
 
@@ -96,20 +106,20 @@ MongoDB remains the primary database. Supabase Storage is used only for uploaded
 
 ## Tech Stack
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | React, TypeScript, Vite, Tailwind CSS |
-| Routing/Data | React Router, TanStack Query, Axios |
-| State | Zustand |
-| UI | Lucide React, Recharts |
-| Backend | Node.js, Express.js, TypeScript |
-| Database | MongoDB, Mongoose |
-| File Storage | Supabase Storage |
-| Auth | JWT, bcrypt |
-| Realtime | Socket.io |
-| Security | Helmet, CORS, rate limiting, backend RBAC |
-| Validation | Zod |
-| Testing | Vitest, Supertest, MongoDB Memory Server |
+| Layer        | Technology                                |
+| ------------ | ----------------------------------------- |
+| Frontend     | React, TypeScript, Vite, Tailwind CSS     |
+| Routing/Data | React Router, TanStack Query, Axios       |
+| State        | Zustand                                   |
+| UI           | Lucide React, Recharts                    |
+| Backend      | Node.js, Express.js, TypeScript           |
+| Database     | MongoDB, Mongoose                         |
+| File Storage | Supabase Storage                          |
+| Auth         | JWT, bcrypt                               |
+| Realtime     | Socket.io                                 |
+| Security     | Helmet, CORS, rate limiting, backend RBAC |
+| Validation   | Zod                                       |
+| Testing      | Vitest, Supertest, MongoDB Memory Server  |
 
 ## Architecture
 
@@ -153,19 +163,21 @@ uploaded submission files only
 
 ## Roles
 
-| Role | Access |
-| --- | --- |
-| Owner | Full workspace control, roles, members, projects, reviews and delivery |
-| Admin | Manage team/projects/task details and review submissions |
+| Role   | Access                                                                         |
+| ------ | ------------------------------------------------------------------------------ |
+| Owner  | Full workspace control, roles, members, projects, reviews and delivery         |
+| Admin  | Manage team, projects, task details and review submissions                     |
 | Member | Work on accessible projects, comment, update assigned progress and submit work |
-| Viewer | Read-only access to progress, comments, delivery and activity |
+| Viewer | Read-only access to progress, comments, delivery and activity                  |
 
 ## Important Rules
 
 - Viewers cannot create projects or tasks.
 - Only project members can be assigned project tasks.
 - Members can submit only their assigned work.
+- Users cannot notify themselves in comments.
 - Done is set after approval, not directly from the task dropdown.
+- Owner/admin submissions can go directly into Delivery.
 - Blocked tasks cannot move forward until dependencies are completed.
 - Owner/admin can edit details and review submissions.
 
@@ -239,7 +251,7 @@ http://localhost:5000
 - Projects and project-specific members
 - Tasks, dependencies and comments
 - Submissions and review decisions
-- Signed file uploads
+- Signed file uploads and downloads
 - Notifications and activity
 
 ## Testing

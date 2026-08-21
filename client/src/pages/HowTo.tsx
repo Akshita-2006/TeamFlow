@@ -7,10 +7,10 @@ const steps = [
   ["Create projects", "Open Projects and create separate projects for separate work. Each project can have its own deadline and team."],
   ["Choose project members", "Open a project and add people from the workspace team into that project. Only project members appear in task assignment."],
   ["Add tasks and owners", "Create tasks with title, due date, priority, labels, effort and description. Assign each task to a project member or leave it unassigned."],
-  ["Submit work for review", "The assigned owner attaches files or links and submits the task for review. TeamFlow moves it to In Review."],
+  ["Submit work", "The assigned owner attaches files or links to the task. Member submissions go to review; owner/admin submissions can move directly into Delivery."],
   ["Approve or request changes", "Owner/admin uses the review inbox to approve, reject, or ask for changes. Approved submissions mark the task Done."],
-  ["Use the delivery room", "Approved versions appear in Delivery, so final files and code links stay separate from work still under review."],
-  ["Use comments and notifications", "Add comments, mention teammates and track notifications from the top menu. Unread notifications show a count until marked read."],
+  ["Use the deliverables hub", "Submitted work is grouped by review state. Approved versions become the clean final shelf for viewers and stakeholders."],
+  ["Use comments and notifications", "Add comments, notify teammates and track notifications from the top menu. Users cannot notify themselves."],
   ["Connect dependencies", "Use Depends on inside task cards. Blocked tasks cannot move forward or submit until their dependency tasks are Done."],
   ["Review workload and deadlines", "Use the project workload page for member capacity. Dashboard and Calendar show your workspace and assigned deadlines."],
   ["Manage settings", "Owners/admins can manage workspace settings, project settings, roles, pending invites and account/profile actions."],
@@ -20,7 +20,7 @@ const highlights = [
   { icon: MailPlus, title: "Simple invites", text: "Add registered users directly or send invite links to new teammates." },
   { icon: Shield, title: "Clear roles", text: "Owner, admin, member and viewer actions stay separated." },
   { icon: FileCheck2, title: "Review gate", text: "Work becomes Done only after a reviewer approves it." },
-  { icon: Cloud, title: "Cloud files", text: "Submissions keep uploaded files, links, versions and review notes together." },
+  { icon: Cloud, title: "Private files", text: "Uploaded files open through access-checked signed links instead of public URLs." },
 ];
 
 export function HowTo() {
@@ -35,7 +35,7 @@ export function HowTo() {
         <section className="panel p-6 md:p-8">
           <span className="chip bg-[#d7edf2] text-[#365f66]"><FileCheck2 size={14} /> User workflow</span>
           <h1 className="mt-4 text-3xl font-black tracking-normal sm:text-4xl">How to use TeamFlow</h1>
-          <p className="mt-3 max-w-3xl leading-7 text-[#6f7b73]">Start with a workspace, invite people, create projects, then run work through submit, review, approve and deliver. Tasks still exist, but the core flow is approval-based delivery.</p>
+          <p className="mt-3 max-w-3xl leading-7 text-[#6f7b73]">Start with a workspace, invite people, create projects, then run work through submit, review, approve and deliver. Tasks still exist, but the core flow is controlled delivery with a clear final output shelf.</p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-2">
             {steps.map(([title, text], index) => (
